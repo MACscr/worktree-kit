@@ -1,0 +1,9 @@
+#!/usr/bin/env python3
+"""worktree-archive: Clean up a Laravel worktree."""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from worktree_kit.cli import archive
+archive()

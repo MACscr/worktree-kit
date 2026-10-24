@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "worktree-kit"
+version = "0.1.0"
+description = "Local HTTPS domains, test databases, and Redis prefixes for Laravel git worktrees"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Mark Chaney" }]
+keywords = ["laravel", "git-worktree", "caddy", "php"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+]
+
+[project.urls]
+Homepage = "https://github.com/MACscr/worktree-kit"
+Repository = "https://github.com/MACscr/worktree-kit"
+Issues = "https://github.com/MACscr/worktree-kit/issues"
+
+[project.scripts]
+worktree-setup = "worktree_kit.cli:setup"
+worktree-archive = "worktree_kit.cli:archive"
+worktree-serve = "worktree_kit.cli:serve"
+worktree-purge-herd = "worktree_kit.cli:purge_herd"
+
+[tool.setuptools.packages.find]
+include = ["worktree_kit*"]

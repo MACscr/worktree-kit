@@ -1,0 +1,10 @@
+#!/usr/bin/env python3
+"""worktree-setup: Set up a Laravel worktree."""
+import sys
+from pathlib import Path
+
+# Add the package root to sys.path so we can import worktree_kit
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from worktree_kit.cli import setup
+setup()

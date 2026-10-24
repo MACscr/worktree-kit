@@ -1,0 +1,26 @@
+# worktree-kit configuration
+# Copy to ~/.worktree-kit.toml and adjust paths for your machine.
+# A .worktree-kit.toml in a worktree overrides this file.
+# WORKTREE_KIT_SITES_DIR and WORKTREE_KIT_TLD override both files.
+#
+# Repeat [repos.<name>] for each project. <name> is only a label.
+
+[general]
+caddy_sites_dir = "~/.worktree-kit/sites"  # One Caddy site file per worktree
+caddyfile = "~/.worktree-kit/Caddyfile"    # Imports the site files above
+caddy_run_dir = "~/.worktree-kit/run"      # Pid files from the old per-worktree php -S
+php_fpm_socket = "/opt/homebrew/var/run/php-fpm.sock"  # Intel Homebrew: /usr/local/var/run/php-fpm.sock
+tld = "test"
+
+[repos.myapp]
+source = "~/code/myapp"          # Canonical checkout (.env, vendor/, node_modules/)
+# path_match = "/code/myapp"     # Regex against the full worktree path (checked first)
+remote_match = "myapp"            # Regex against `git remote get-url origin` (default: the repo label)
+dir_match = "myapp"               # Regex against the directory name (default: the repo label)
+env_keys = ["SESSION_DOMAIN", "APP_URL", "APP_DOMAIN"]
+# skip_test_db = false           # true for SQLite or Postgres test suites
+# domain = "myapp.test"          # Serve worktrees at {dir}.myapp.test; the myapp directory stays on myapp.test
+# link_subdomain = "www"         # Redirect the bare domain at www.{domain}
+# links = [                      # Paseo header buttons. {domain} is substituted. [] writes nothing.
+#   { label = "App", url = "https://{domain}" },
+# ]

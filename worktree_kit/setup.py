@@ -294,8 +294,6 @@ def run(*, fresh: bool = False) -> None:
     print("  Registering site...")
     domain = caddy.worktree_domain(worktree_dir, repo_conf, tld)
     caddy.serve(cfg, worktree_dir, domain, repo_conf=repo_conf)
-    # Left by the pre-FPM setup, which gave each worktree its own port.
-    env.env_unset("WORKTREE_PORT")
 
     # 8. Point Paseo's workspace link at this worktree's app
     if links := caddy.write_workspace_links(domain, repo_conf):

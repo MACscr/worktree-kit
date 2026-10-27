@@ -18,9 +18,9 @@ class NameTests(unittest.TestCase):
             "myapp-feat-auth",
         )
 
-    def test_codex_worktree_combines_id_and_repo(self):
-        path = Path("/code/myapp/.codex/worktrees/abc123/myapp")
-        self.assertEqual(caddy.detect_worktree_dir(path), "abc123-myapp")
+    def test_nested_directory_uses_the_leaf_name(self):
+        path = Path("/code/myapp/worktrees/feat-auth")
+        self.assertEqual(caddy.detect_worktree_dir(path), "feat-auth")
 
     def test_domain_without_a_base(self):
         self.assertEqual(caddy.worktree_domain("feat-auth", {}, "test"), "feat-auth.test")

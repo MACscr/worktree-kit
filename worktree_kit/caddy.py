@@ -13,10 +13,7 @@ from __future__ import annotations
 
 import json
 import os
-import re
-import signal
 import subprocess
-import time
 from pathlib import Path
 from typing import Any
 
@@ -29,17 +26,11 @@ def _general(config: dict[str, Any], key: str) -> str:
 
 
 def detect_worktree_dir(cwd: Path | None = None) -> str:
-    """Detect the worktree directory name. Handles Codex worktrees specially.
+    """Return the worktree's directory name, which is also its site name.
 
-    Codex worktrees live under .codex/worktrees/{id}/{repo} and get named
-    {id}-{repo} to ensure uniqueness. Regular worktrees use the directory
-    name as-is.
+    Paseo names the worktree directory, so that name is already unique.
     """
-    path = str(cwd or Path.cwd())
-    match = re.search(r"\.codex/worktrees/([^/]+)/([^/]+)", path)
-    if match:
-        return f"{match.group(1)}-{match.group(2)}"
-    return Path(path).name
+    return (cwd or Path.cwd()).name
 
 
 def worktree_domain(
@@ -193,54 +184,6 @@ def reload(config: dict[str, Any]) -> bool:
     return True
 
 
-def stop_legacy_server(config: dict[str, Any], worktree_dir: str) -> bool:
-    """Stop a per-worktree `php -S` server left by the pre-FPM setup.
-
-    Worktrees set up before the move to PHP-FPM each ran their own server,
-    tracked by a pid file in the old run directory. Serving or archiving such a
-    worktree now stops it, so moving a machine over needs no separate cleanup
-    pass. True if one was running.
-    """
-    run_dir = Path(os.path.expanduser(_general(config, "caddy_run_dir")))
-    pid_path = run_dir / f"{worktree_dir}.pid"
-    (run_dir / f"{worktree_dir}.log").unlink(missing_ok=True)
-    if not pid_path.is_file():
-        return False
-
-    try:
-        pid = int(pid_path.read_text().strip())
-    except ValueError:
-        pid = None
-    pid_path.unlink(missing_ok=True)
-    if pid is None:
-        return False
-
-    # PIDs are reused, so only signal a process that is still a PHP server.
-    result = subprocess.run(
-        ["ps", "-o", "command=", "-p", str(pid)],
-        capture_output=True,
-        text=True,
-    )
-    command = result.stdout.strip()
-    if not command.startswith("php ") or "-S" not in command:
-        return False
-
-    # The server was its own session leader, so signalling the group reaps
-    # its forked workers too.
-    try:
-        os.killpg(os.getpgid(pid), signal.SIGTERM)
-    except (ProcessLookupError, PermissionError):
-        return False
-
-    for _ in range(20):
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            break
-        time.sleep(0.1)
-    return True
-
-
 def serve(
     config: dict[str, Any],
     worktree_dir: str,
@@ -248,16 +191,12 @@ def serve(
     repo_conf: dict[str, Any] | None = None,
     root: Path | None = None,
 ) -> bool:
-    """Bring a worktree online: register its site with Caddy and reload.
+    """Bring a worktree online: write its site file and reload Caddy.
 
-    Returns whether Caddy accepted the reload. Callers that open a browser
-    should wait for that, or they show a site that is not being served yet.
+    Returns whether Caddy accepted the reload. The site file is written either way.
     """
     entry = (repo_conf or {}).get("link_subdomain")
     public = (root or Path.cwd()) / "public"
-
-    if stop_legacy_server(config, worktree_dir):
-        print("  Stopped the old per-worktree PHP server")
 
     socket_path = fpm_socket(config)
     if not socket_path.exists():
@@ -276,9 +215,6 @@ def serve(
 
 def unserve(config: dict[str, Any], worktree_dir: str, domain: str) -> None:
     """Take a worktree offline: drop its site and reload Caddy."""
-    if stop_legacy_server(config, worktree_dir):
-        print("  Stopped the old per-worktree PHP server")
-
     path = site_file(config, worktree_dir)
     if path.is_file():
         path.unlink()

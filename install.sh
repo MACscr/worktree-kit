@@ -23,18 +23,15 @@ PHP_FPM_SOCKET="${BREW_PREFIX}/var/run/php-fpm.sock"
 # The pool file appears only after PHP is installed. The last match is the
 # newest version directory (8.3, 8.4, ... sort lexicographically).
 PHP_POOL=""
-PHP_INI=""
 if [[ -d "${BREW_PREFIX}/etc/php" ]]; then
     for php_dir in "${BREW_PREFIX}/etc/php"/*; do
         if [[ -f "${php_dir}/php-fpm.d/www.conf" ]]; then
             PHP_POOL="${php_dir}/php-fpm.d/www.conf"
-            PHP_INI="${php_dir}/php.ini"
         fi
     done
 fi
 if [[ -z "$PHP_POOL" ]]; then
     PHP_POOL="${BREW_PREFIX}/etc/php/<version>/php-fpm.d/www.conf"
-    PHP_INI="${BREW_PREFIX}/etc/php/<version>/php.ini"
 fi
 
 echo "Welcome to worktree-kit setup!"
@@ -106,7 +103,6 @@ if [[ "$WRITE_CONFIG" -eq 1 ]]; then
 [general]
 caddy_sites_dir = "$WT_HOME/sites"
 caddyfile = "$WT_HOME/Caddyfile"
-caddy_run_dir = "$WT_HOME/run"
 php_fpm_socket = "$PHP_FPM_SOCKET"
 tld = "$TLD"
 TOML
@@ -150,11 +146,9 @@ echo "  Made bin scripts executable"
 echo ""
 echo "Setup complete! Restart your shell or run: source $ZSHRC"
 echo ""
-echo "Commands (run them from a worktree):"
-echo "  worktree-setup       - .env, dependencies, test database, Caddy site"
-echo "  worktree-archive     - drop test databases, Redis keys, and the site"
-echo "  worktree-serve       - register the current worktree with Caddy"
-echo "  worktree-purge-herd  - remove per-site files left by Laravel Herd"
+echo "Commands (Paseo hooks run these from the worktree):"
+echo "  worktree-setup    - .env, dependencies, test database, Caddy site"
+echo "  worktree-archive  - drop test databases, Redis keys, and the site"
 echo ""
 
 NEEDS_SETUP=0
@@ -181,73 +175,97 @@ if [[ "$NEEDS_SETUP" -eq 1 ]]; then
     cat << SETUP
 
 One-time machine setup. Skip any step you have already done.
-sudo is only for /etc/resolver, for dnsmasq binding port 53, and for Caddy
-binding port 443. Do not run sudo brew: Homebrew refuses to run as root.
+sudo is only for /etc/resolver, for the dnsmasq LaunchDaemon (port 53), and
+for the Caddy LaunchDaemon (port 443). Do not run sudo brew: Homebrew refuses
+to run as root. Do not start Caddy or dnsmasq with brew services. On a machine
+set up this way, brew services list shows both as "none"; launchd is what
+keeps them running.
 
   # 0. Python 3.11 or newer.
   python3 --version
   brew install python@3.13
 
-  # 1. PHP-FPM. One shared pool serves every worktree.
-  brew install php
-  # In ${PHP_POOL} set these two lines:
+  # 1. PHP-FPM. One shared pool, Homebrew php@8.4, started as your user:
+  #    ~/Library/LaunchAgents/sh.brew.php@8.4.plist
+  brew install php@8.4
+  brew services start php@8.4
+  # In ${PHP_POOL}:
   #   listen = ${PHP_FPM_SOCKET}
   #   pm = ondemand
-  # In ${PHP_INI} set:
+  #   pm.max_children = 24
+  # Drop-in ${BREW_PREFIX}/etc/php/8.4/conf.d/99-worktree-kit.ini:
+  #   opcache.validate_timestamps = 1
   #   opcache.revalidate_freq = 0
-  # A path containing <version> means PHP is not installed yet; the file
-  # appears under ${BREW_PREFIX}/etc/php/ after brew install php.
+  #   opcache.memory_consumption = 512
+  #   opcache.interned_strings_buffer = 32
+  #   opcache.max_accelerated_files = 100000
+  #   realpath_cache_size = 4096K
+  # A path containing <version> means PHP is not installed yet.
   # One pool can serve many apps: PHP clears putenv() at the end of each
-  # request, and OPcache keys scripts by absolute path.
-  brew services start php
+  # request, and OPcache keys scripts by absolute path. pm = ondemand means
+  # an idle worktree has no workers.
 
-  # 2. DNS. *.${TLD} has to resolve here, including one extra label for tenant
-  # subdomains. /etc/hosts cannot express that.
+  # 2. DNS for *.${TLD}, including one extra label for tenant subdomains.
+  # /etc/hosts cannot express that. dnsmasq is a system LaunchDaemon. The
+  # process runs as nobody. Its plist is
+  # /Library/LaunchDaemons/sh.brew.dnsmasq.plist (KeepAlive, RunAtLoad,
+  # LimitLoadToSessionType includes System).
   brew install dnsmasq
   echo 'address=/.${TLD}/127.0.0.1' >> ${BREW_PREFIX}/etc/dnsmasq.conf
-  brew services start dnsmasq
-  # Port 53 is privileged. If that user service cannot bind it, install the
-  # formula plist as a system daemon (this is the sudo step; not sudo brew):
-  #   sudo cp ${BREW_PREFIX}/opt/dnsmasq/homebrew.mxcl.dnsmasq.plist /Library/LaunchDaemons/
-  #   sudo launchctl bootstrap system /Library/LaunchDaemons/homebrew.mxcl.dnsmasq.plist
+  # Save this as /Library/LaunchDaemons/sh.brew.dnsmasq.plist
+  # (Label sh.brew.dnsmasq), then:
+  #   sudo launchctl bootstrap system /Library/LaunchDaemons/sh.brew.dnsmasq.plist
+  #
+  # ProgramArguments:
+  #   ${BREW_PREFIX}/opt/dnsmasq/sbin/dnsmasq
+  #   --keep-in-foreground
+  #   -C ${BREW_PREFIX}/etc/dnsmasq.conf
+  #   -7 ${BREW_PREFIX}/etc/dnsmasq.d,*.conf
   sudo mkdir -p /etc/resolver
   echo 'nameserver 127.0.0.1' | sudo tee /etc/resolver/${TLD}
 
-  # 3. Caddy. worktree-setup and worktree-serve run:
+  # 3. Caddy. worktree-setup reloads it with:
   #      caddy reload --config ${WT_HOME}/Caddyfile
-  # The process has to be the one started with that file. brew services would
-  # start Homebrew's own Caddyfile, so a reboot would not load sites/*.caddy.
-  brew install caddy
-  # Foreground, to confirm the config loads:
+  # That talks to the admin API and does not restart the process.
+  # brew services would start Homebrew's own Caddyfile, so Caddy is a
+  # separate root LaunchDaemon:
   #   ${BREW_PREFIX}/bin/caddy run --config ${WT_HOME}/Caddyfile
-  # Port 443 needs root, and HOME must be your user so the local CA is created
-  # in your keychain. Save the plist below as
-  # /Library/LaunchDaemons/com.worktree-kit.caddy.plist and load it with:
+  # HOME is your user, so the local CA is created in your keychain.
+  # XDG_DATA_HOME is ~/Library/Application Support.
+  # stdout and stderr both go to ${WT_HOME}/caddy.log.
+  brew install caddy
+  # Save the plist below as /Library/LaunchDaemons/com.worktree-kit.caddy.plist
+  # and load it with:
   #   sudo launchctl bootstrap system /Library/LaunchDaemons/com.worktree-kit.caddy.plist
   #
   # <?xml version="1.0" encoding="UTF-8"?>
   # <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
   # <plist version="1.0"><dict>
   #   <key>Label</key><string>com.worktree-kit.caddy</string>
-  #   <key>ProgramArguments</key>
-  #   <array>
+  #   <key>ProgramArguments</key><array>
   #     <string>${BREW_PREFIX}/bin/caddy</string>
   #     <string>run</string>
   #     <string>--config</string>
   #     <string>${WT_HOME}/Caddyfile</string>
   #   </array>
-  #   <key>EnvironmentVariables</key>
-  #   <dict><key>HOME</key><string>${HOME}</string></dict>
+  #   <key>EnvironmentVariables</key><dict>
+  #     <key>HOME</key><string>${HOME}</string>
+  #     <key>XDG_DATA_HOME</key><string>${HOME}/Library/Application Support</string>
+  #   </dict>
   #   <key>RunAtLoad</key><true/>
   #   <key>KeepAlive</key><true/>
+  #   <key>StandardOutPath</key><string>${WT_HOME}/caddy.log</string>
+  #   <key>StandardErrorPath</key><string>${WT_HOME}/caddy.log</string>
   # </dict></plist>
   caddy trust
 
 If you change tld, the dnsmasq address and /etc/resolver file need the same
 suffix.
 
-MySQL is required only for per-worktree test databases (server and the mysql
-client). Redis is optional. For Postgres or SQLite tests, set skip_test_db
-on that repo. This installer does not start MySQL or Redis.
+MySQL (the mysql client, talking to a local server) creates the per-worktree
+test databases. Redis is used when the app's .env points at it. On this kind
+of machine both are Homebrew services running as your user (mysql@8.4 and
+redis). This installer does not start them. For Postgres or SQLite tests, set
+skip_test_db on that repo.
 SETUP
 fi

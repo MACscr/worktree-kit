@@ -33,8 +33,6 @@ Issues = "https://github.com/MACscr/worktree-kit/issues"
 [project.scripts]
 worktree-setup = "worktree_kit.cli:setup"
 worktree-archive = "worktree_kit.cli:archive"
-worktree-serve = "worktree_kit.cli:serve"
-worktree-purge-herd = "worktree_kit.cli:purge_herd"
 
 [tool.setuptools.packages.find]
 include = ["worktree_kit*"]

@@ -1,9 +1,0 @@
-#!/usr/bin/env python3
-"""worktree-purge-herd: Remove Herd/Valet's generated per-site artifacts."""
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from worktree_kit.cli import purge_herd
-purge_herd()

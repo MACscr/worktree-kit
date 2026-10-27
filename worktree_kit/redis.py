@@ -2,18 +2,12 @@
 
 from __future__ import annotations
 
-import os
 import re
 import shutil
 import subprocess
 from pathlib import Path
 
 from .env import env_get
-
-# Serving goes through Caddy. Redis may still be the copy Herd installed.
-# That redis-cli lives in Herd's bin directory, which is on PATH only in
-# interactive shells, so a non-interactive archive would otherwise skip cleanup.
-HERD_BIN_DIR = "~/Library/Application Support/Herd/bin"
 
 # UNLINK takes the keys as arguments, so a worktree with a large cache would
 # otherwise overflow the command line.
@@ -78,28 +72,23 @@ def owned_prefix(worktree_dir: str, env_path: str | Path = ".env") -> str | None
 
 
 def _redis_cli() -> str | None:
-    """Locate redis-cli, falling back to the copy Herd bundles.
-
-    Herd's bin directory is only on PATH in interactive shells, and on a
-    machine whose Redis still comes from Herd it is the only redis-cli.
-    """
-    if found := shutil.which("redis-cli"):
-        return found
-
-    bundled = Path(os.path.expanduser(HERD_BIN_DIR)) / "redis-cli"
-    return str(bundled) if os.access(bundled, os.X_OK) else None
+    """Return redis-cli from PATH, or None when it is not installed."""
+    return shutil.which("redis-cli")
 
 
 def _redis_cli_args(env_path: str | Path = ".env") -> list[str] | None:
     """Build the redis-cli invocation for the worktree's configured server.
 
-    Returns None when redis-cli is unavailable or the worktree isn't using Redis.
+    Returns None when the worktree isn't using Redis, or when redis-cli is
+    missing. The missing-binary case is reported here so archive does not
+    look like a successful cleanup.
     """
     if not uses_redis(env_path):
         return None
 
     cli = _redis_cli()
     if not cli:
+        print("  Error: redis-cli is not on PATH; Redis keys were not deleted")
         return None
 
     args = [cli, "-h", env_get("REDIS_HOST", env_path) or "127.0.0.1"]
@@ -144,9 +133,12 @@ def drop_keys(prefix: str, env_path: str | Path = ".env") -> None:
     if not prefix:
         return
 
+    if not uses_redis(env_path):
+        print("  Skipping Redis cleanup (not configured)")
+        return
+
     args = _redis_cli_args(env_path)
     if args is None:
-        print("  Skipping Redis cleanup (not configured or redis-cli unavailable)")
         return
 
     databases = _populated_databases(args)

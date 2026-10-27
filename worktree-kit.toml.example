@@ -8,7 +8,6 @@
 [general]
 caddy_sites_dir = "~/.worktree-kit/sites"  # One Caddy site file per worktree
 caddyfile = "~/.worktree-kit/Caddyfile"    # Imports the site files above
-caddy_run_dir = "~/.worktree-kit/run"      # Pid files from the old per-worktree php -S
 php_fpm_socket = "/opt/homebrew/var/run/php-fpm.sock"  # Intel Homebrew: /usr/local/var/run/php-fpm.sock
 tld = "test"
 

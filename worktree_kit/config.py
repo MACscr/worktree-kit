@@ -19,7 +19,6 @@ DEFAULTS: dict[str, Any] = {
     "general": {
         "caddy_sites_dir": "~/.worktree-kit/sites",
         "caddyfile": "~/.worktree-kit/Caddyfile",
-        "caddy_run_dir": "~/.worktree-kit/run",
         "php_fpm_socket": "/opt/homebrew/var/run/php-fpm.sock",
         "tld": "test",
     },
